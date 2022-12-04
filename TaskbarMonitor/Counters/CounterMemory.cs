@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.VisualBasic.Devices;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -10,32 +11,25 @@ namespace TaskbarMonitor.Counters
 {
     class CounterMemory: ICounter
     {
-
         public CounterMemory(Options options)
            : base(options)
-        {
-
-        }
-
-        [DllImport("kernel32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        static extern bool GetPhysicallyInstalledSystemMemory(out long TotalMemoryInKilobytes);
-
-        PerformanceCounter ramCounter;        
-        long totalMemory = 0;
+        {}
+      
+        ulong totalMemory = 0;
         //Dictionary<CounterType, List<CounterInfo>> info = new Dictionary<CounterType, List<CounterInfo>>();
 
         public override void Initialize()
         {
-            ramCounter = new PerformanceCounter("Memory", "Available MBytes");
-            
-            GetPhysicallyInstalledSystemMemory(out totalMemory);
+            totalMemory = new ComputerInfo().TotalPhysicalMemory;
+            ulong totalMemoryGB = totalMemory / 1024 / 1024 / 1024; // bytes -> GB
+
             lock (ThreadLock)
             {
-                InfoSummary = new CounterInfo() { Name = "summary", History = new List<float>(), MaximumValue = totalMemory / 1024 };
+                InfoSummary = new CounterInfo() { Name = "summary", History = new List<float>(), MaximumValue = totalMemoryGB };
                 Infos = new List<CounterInfo>();
-                Infos.Add(new CounterInfo() { Name = "U", History = new List<float>(), MaximumValue = totalMemory / 1024 });
+                Infos.Add(new CounterInfo() { Name = "U", History = new List<float>(), MaximumValue = totalMemoryGB });
             }
+
             /*
             info.Add(CounterType.SINGLE, new List<CounterInfo> {
                 new CounterInfo() { Name = "default", History = new List<float>(), MaximumValue = totalMemory / 1024 }
@@ -43,7 +37,8 @@ namespace TaskbarMonitor.Counters
         }
         public override void Update()
         {
-            float currentValue = (totalMemory / 1024) - ramCounter.NextValue();
+            float currentValue = totalMemory - new ComputerInfo().AvailablePhysicalMemory;
+            currentValue = currentValue / 1024 / 1024 / 1024; // bytes -> GB
 
             lock (ThreadLock)
             {
@@ -51,7 +46,7 @@ namespace TaskbarMonitor.Counters
                 InfoSummary.History.Add(currentValue);
                 if (InfoSummary.History.Count > Options.HistorySize) InfoSummary.History.RemoveAt(0);
 
-                InfoSummary.CurrentStringValue = (InfoSummary.CurrentValue / 1024).ToString("0.0") + "GB";
+                InfoSummary.CurrentStringValue = (InfoSummary.CurrentValue).ToString("0.0") + "GB";
 
                 {
                     var info = Infos.Where(x => x.Name == "U").Single();
@@ -59,7 +54,7 @@ namespace TaskbarMonitor.Counters
                     info.History.Add(currentValue);
                     if (info.History.Count > Options.HistorySize) info.History.RemoveAt(0);
 
-                    info.CurrentStringValue = (info.CurrentValue / 1024).ToString("0.0") + "GB";
+                    info.CurrentStringValue = (info.CurrentValue).ToString("0.0") + "GB";
                 }
 
             }
